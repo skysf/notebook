@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Studio Notes</title>
+    
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Configure Tailwind -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        sky: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7', // Sky Studio Blue
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                            950: '#082f49',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 3. Load Babel for JSX support -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track { background: transparent; }
+        textarea::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.5); border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 transition-colors duration-300">
+    
+    <div id="root"></div>
+
+    <!-- 4. Main Application Code -->
+    <!-- Note: type="text/babel" is crucial for JSX support -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0';
+        import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+        import { 
+            Save, Trash2, Download, Sun, Moon, Maximize2, Minimize2, Share2, 
+            Type, Mic, Sparkles, Layout, Palette, X, AlertCircle, FileText, ChevronDown 
+        } from 'https://esm.sh/lucide-react@0.263.1';
+
+        // --- Components ---
+
+        const Button = ({ onClick, children, className = "", variant = "primary", title, isDarkMode }) => {
+            const baseStyle = "flex items-center justify-center px-3 py-2 rounded-lg transition-all duration-200 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-offset-2";
+            
+            const getVariantStyle = () => {
+                if (isDarkMode) {
+                    switch (variant) {
+                        case 'primary': return "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 focus:ring-sky-500";
+                        case 'secondary': return "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 focus:ring-slate-500";
+                        case 'ghost': return "bg-transparent hover:bg-slate-800/50 text-slate-400 hover:text-sky-300 focus:ring-sky-500";
+                        case 'danger': return "bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 focus:ring-red-500";
+                        default: return "";
+                    }
+                } else {
+                    switch (variant) {
+                        case 'primary': return "bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-200 focus:ring-sky-500";
+                        case 'secondary': return "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm focus:ring-slate-300";
+                        case 'ghost': return "bg-transparent hover:bg-slate-100 text-slate-500 hover:text-sky-600 focus:ring-sky-500";
+                        case 'danger': return "bg-red-50 hover:bg-red-100 text-red-600 border border-transparent hover:border-red-200 focus:ring-red-500";
+                        default: return "";
+                    }
+                }
+            };
+
+            return (
+                <button onClick={onClick} className={`${baseStyle} ${getVariantStyle()} ${className}`} title={title}>
+                    {children}
+                </button>
+            );
+        };
+
+        const SectionHeader = ({ icon: Icon, title, action, isDarkMode }) => (
+            <div className={`flex items-center justify-between mb-4 text-xs uppercase tracking-wider font-bold select-none ${isDarkMode ? 'text-sky-200/50' : 'text-slate-400'}`}>
+                <div className="flex items-center gap-2">
+                    <Icon size={14} className={isDarkMode ? "text-sky-400" : "text-sky-600"} />
+                    <span>{title}</span>
+                </div>
+                {action && <div>{action}</div>}
+            </div>
+        );
+
+        const TextArea = ({ value, onChange, placeholder, className, minHeight, style }) => (
+            <textarea
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                className={`w-full bg-transparent border-none resize-none focus:ring-0 leading-relaxed transition-colors duration-200 ${className}`}
+                style={{ minHeight, outline: 'none', ...style }}
+            />
+        );
+
+        // --- Main Application ---
+
+        function CornellNotesApp() {
+            // State
+            const [isDarkMode, setIsDarkMode] = useState(false);
+            const [isFocusMode, setIsFocusMode] = useState(false);
+            const [showStyleMenu, setShowStyleMenu] = useState(false);
+            const [showExportMenu, setShowExportMenu] = useState(false);
+            const [showClearConfirm, setShowClearConfirm] = useState(false);
+            const [lastSaved, setLastSaved] = useState(null);
+            
+            // Style Preferences
+            const [preferences, setPreferences] = useState({
+                fontSize: 'text-base', 
+                textColor: 'default' 
+            });
+
+            const [noteData, setNoteData] = useState({
+                title: '',
+                date: new Date().toISOString().split('T')[0],
+                cues: '',
+                notes: '',
+                summary: ''
+            });
+
+            // Load from local storage
+            useEffect(() => {
+                const savedData = localStorage.getItem('cornell-notes-data');
+                if (savedData) {
+                    setNoteData(JSON.parse(savedData));
+                    setLastSaved(new Date());
+                }
+            }, []);
+
+            // Auto-save
+            useEffect(() => {
+                const timeoutId = setTimeout(() => {
+                    localStorage.setItem('cornell-notes-data', JSON.stringify(noteData));
+                    setLastSaved(new Date());
+                }, 1000); 
+                return () => clearTimeout(timeoutId);
+            }, [noteData]);
+
+            // Handlers
+            const handlePrint = () => {
+                setShowExportMenu(false);
+                window.print();
+            };
+
+            const handleExportDoc = () => {
+                setShowExportMenu(false);
+                const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${noteData.title}</title></head><body>`;
+                const footer = "</body></html>";
+                const sourceHTML = header + `
+                <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+                    <h1 style="font-size: 24pt; color: #0284c7;">${noteData.title || 'Untitled Note'}</h1>
+                    <p style="text-align: right; color: #64748b;"><strong>Date:</strong> ${noteData.date}</p>
+                    <hr/>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                    <tr>
+                        <td style="width: 30%; vertical-align: top; padding: 10px; border-right: 1px solid #cbd5e1; background-color: #f8fafc;">
+                        <h3 style="color: #0284c7; text-transform: uppercase; font-size: 10pt;">Cues & Recall</h3>
+                        <div style="white-space: pre-wrap;">${noteData.cues.replace(/\n/g, '<br/>')}</div>
+                        </td>
+                        <td style="width: 70%; vertical-align: top; padding: 10px;">
+                        <h3 style="color: #0284c7; text-transform: uppercase; font-size: 10pt;">Detailed Notes</h3>
+                        <div style="white-space: pre-wrap;">${noteData.notes.replace(/\n/g, '<br/>')}</div>
+                        </td>
+                    </tr>
+                    </table>
+                    <div style="margin-top: 20px; padding: 15px; border-top: 2px solid #cbd5e1; background-color: #f1f5f9;">
+                    <h3 style="color: #0284c7; text-transform: uppercase; font-size: 10pt;">Summary</h3>
+                    <div style="white-space: pre-wrap; font-style: italic;">${noteData.summary.replace(/\n/g, '<br/>')}</div>
+                    </div>
+                </div>` + footer;
+
+                const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+                const fileDownload = document.createElement("a");
+                document.body.appendChild(fileDownload);
+                fileDownload.href = source;
+                fileDownload.download = `${noteData.title || 'My Notes'}.doc`;
+                fileDownload.click();
+                document.body.removeChild(fileDownload);
+            };
+
+            const handleClearRequest = () => setShowClearConfirm(true);
+
+            const confirmClear = () => {
+                setNoteData({
+                    title: '',
+                    date: new Date().toISOString().split('T')[0],
+                    cues: '',
+                    notes: '',
+                    summary: ''
+                });
+                setShowClearConfirm(false);
+            };
+
+            const handleChange = (field, value) => setNoteData(prev => ({ ...prev, [field]: value }));
+
+            const getTextColorClass = () => {
+                if (isDarkMode) {
+                    switch (preferences.textColor) {
+                        case 'white': return "text-white placeholder-slate-500";
+                        case 'yellow': return "text-yellow-200 placeholder-yellow-200/30";
+                        case 'cyan': return "text-cyan-300 placeholder-cyan-300/30";
+                        case 'pink': return "text-pink-300 placeholder-pink-300/30";
+                        default: return "text-slate-200 placeholder-slate-600"; 
+                    }
+                } else {
+                    switch (preferences.textColor) {
+                        case 'blue': return "text-blue-700 placeholder-blue-300";
+                        case 'red': return "text-red-700 placeholder-red-300";
+                        case 'green': return "text-emerald-700 placeholder-emerald-300";
+                        case 'purple': return "text-purple-700 placeholder-purple-300";
+                        default: return "text-slate-800 placeholder-slate-400 font-normal";
+                    }
+                }
+            };
+
+            const darkColors = [
+                { id: 'default', color: 'bg-slate-400' },
+                { id: 'white', color: 'bg-white' },
+                { id: 'yellow', color: 'bg-yellow-200' },
+                { id: 'cyan', color: 'bg-cyan-300' },
+                { id: 'pink', color: 'bg-pink-300' }
+            ];
+
+            const lightColors = [
+                { id: 'default', color: 'bg-slate-800' },
+                { id: 'blue', color: 'bg-blue-600' },
+                { id: 'red', color: 'bg-red-600' },
+                { id: 'green', color: 'bg-emerald-600' },
+                { id: 'purple', color: 'bg-purple-600' }
+            ];
+
+            const themeClasses = isDarkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900";
+            const cardClasses = isDarkMode ? "bg-slate-900/50 border-slate-800 shadow-xl shadow-black/40" : "bg-white border border-slate-200 shadow-xl shadow-slate-200/60";
+            const navClasses = isDarkMode ? "border-slate-800 bg-slate-950/80 border-b" : "border-slate-200 bg-white/80 border-b backdrop-blur-md";
+            const textAreaClass = `${preferences.fontSize} ${getTextColorClass()}`;
+
+            return (
+                <div className={`min-h-screen flex flex-col transition-colors duration-300 ${themeClasses} font-sans selection:bg-sky-200 selection:text-sky-900`}>
+                    
+                    {/* Navigation Bar - HIDDEN ON PRINT */}
+                    <nav className={`sticky top-0 z-50 transition-all duration-300 ${navClasses} ${isFocusMode ? '-translate-y-full opacity-0 absolute w-full' : 'translate-y-0 opacity-100'} print:hidden`}>
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between relative">
+                            <div className="flex items-center gap-3">
+                                <div className={`px-2 py-1.5 rounded-lg shadow-sm flex items-center justify-center transition-colors ${isDarkMode ? 'bg-sky-500 text-white' : 'bg-black text-white'}`}>
+                                    <span className="font-bold text-xs tracking-tight whitespace-nowrap">Sky Studio</span>
+                                </div>
+                                <div>
+                                    <h1 className="font-bold text-lg tracking-tight">Sky Studio</h1>
+                                    <p className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Intelligent Note System</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className={`text-xs mr-2 hidden md:block font-medium ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    {lastSaved ? `Saved ${lastSaved.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Unsaved'}
+                                </span>
+
+                                {/* Settings Buttons */}
+                                <div className="relative">
+                                    <Button variant={showStyleMenu ? "primary" : "ghost"} onClick={() => { setShowStyleMenu(!showStyleMenu); setShowExportMenu(false); }} title="Text Settings" isDarkMode={isDarkMode}>
+                                        <Type size={18} />
+                                    </Button>
+
+                                    {showStyleMenu && (
+                                        <div className={`absolute top-full right-0 mt-2 w-64 p-4 rounded-xl border shadow-2xl z-50 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-700 shadow-black/50' : 'bg-white border-slate-100 shadow-slate-300'}`}>
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Typography</span>
+                                                <button onClick={() => setShowStyleMenu(false)} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-red-500'}`}><X size={14}/></button>
+                                            </div>
+                                            
+                                            <div className="mb-4">
+                                                <label className={`text-xs mb-2 block font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Size</label>
+                                                <div className={`flex gap-1 rounded-lg p-1 ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-100'}`}>
+                                                    {['text-sm', 'text-base', 'text-lg', 'text-xl'].map((size, idx) => (
+                                                        <button key={size} onClick={() => setPreferences(p => ({...p, fontSize: size}))} className={`flex-1 py-1 rounded text-center text-xs font-bold transition-colors ${preferences.fontSize === size ? (isDarkMode ? 'bg-sky-600 text-white' : 'bg-white text-sky-700 shadow-sm border border-slate-200') : (isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-200')}`}>
+                                                            {['S', 'M', 'L', 'XL'][idx]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className={`text-xs mb-2 block font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Color</label>
+                                                <div className="flex gap-2 justify-between">
+                                                    {(isDarkMode ? darkColors : lightColors).map((theme) => (
+                                                        <button key={theme.id} onClick={() => setPreferences(p => ({...p, textColor: theme.id}))} className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${theme.color} ${preferences.textColor === theme.id ? (isDarkMode ? 'border-sky-500 ring-2 ring-sky-500/30' : 'border-sky-600 ring-2 ring-sky-200') : 'border-transparent'}`} title={theme.id}/>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <Button variant="ghost" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme" isDarkMode={isDarkMode}>
+                                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                                </Button>
+                                
+                                <Button variant="ghost" onClick={() => setIsFocusMode(true)} title="Focus Mode" isDarkMode={isDarkMode}>
+                                    <Maximize2 size={18} />
+                                </Button>
+
+                                <div className={`h-4 w-px mx-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
+
+                                <Button variant="danger" onClick={handleClearRequest} title="Clear All" isDarkMode={isDarkMode}>
+                                    <Trash2 size={18} />
+                                </Button>
+                                
+                                <div className="relative">
+                                    <Button variant="primary" onClick={() => { setShowExportMenu(!showExportMenu); setShowStyleMenu(false); }} isDarkMode={isDarkMode} className="flex items-center gap-1 pl-3 pr-2">
+                                        <span>Export</span>
+                                        <ChevronDown size={14} />
+                                    </Button>
+
+                                    {showExportMenu && (
+                                        <div className={`absolute top-full right-0 mt-2 w-48 p-1 rounded-xl border shadow-2xl z-50 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-700 shadow-black/50' : 'bg-white border-slate-100 shadow-slate-300'}`}>
+                                            <button onClick={handlePrint} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-1 ${isDarkMode ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-700'}`}>
+                                                <div className={`p-1.5 rounded ${isDarkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-600'}`}><Download size={14} /></div>
+                                                Save as PDF
+                                            </button>
+                                            <button onClick={handleExportDoc} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-700'}`}>
+                                                <div className={`p-1.5 rounded ${isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'}`}><FileText size={14} /></div>
+                                                Save as Word
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    {/* Exit Focus */}
+                    {isFocusMode && (
+                        <button onClick={() => setIsFocusMode(false)} className={`fixed top-4 right-4 z-50 p-2 rounded-full transition-colors shadow-lg print:hidden ${isDarkMode ? 'bg-slate-800 text-white hover:bg-sky-600' : 'bg-white text-slate-600 hover:bg-sky-50 hover:text-sky-600 border border-slate-200'}`}>
+                            <Minimize2 size={20} />
+                        </button>
+                    )}
+
+                    {/* Clear Modal */}
+                    {showClearConfirm && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl scale-100 border ${isDarkMode ? 'bg-slate-900 border-slate-700 shadow-black/50' : 'bg-white border-slate-100 shadow-slate-200'}`}>
+                                <div className="flex items-center gap-3 mb-4 text-red-500">
+                                    <div className="bg-red-500/10 p-2 rounded-full"><AlertCircle size={24} /></div>
+                                    <h3 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Clear all notes?</h3>
+                                </div>
+                                <p className={`text-sm mb-6 leading-relaxed font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>This action cannot be undone. All your current content including cues, notes, and summary will be erased.</p>
+                                <div className="flex gap-3 justify-end">
+                                    <button onClick={() => setShowClearConfirm(false)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${isDarkMode ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}>Cancel</button>
+                                    <button onClick={confirmClear} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all active:scale-95 ${isDarkMode ? 'bg-red-900/50 text-red-200 hover:bg-red-900/80 shadow-red-900/20' : 'bg-red-50 text-red-600 hover:bg-red-100 shadow-red-200/50'}`}>Yes, Clear All</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Main Content (Interactive) - HIDDEN ON PRINT */}
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 print:hidden">
+                        <div className={`flex flex-col h-full rounded-2xl overflow-hidden transition-all duration-300 ${cardClasses} min-h-[calc(100vh-8rem)]`}>
+                            
+                            {/* Header */}
+                            <header className={`p-6 sm:p-8 border-b grid grid-cols-1 md:grid-cols-12 gap-6 items-center ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                                <div className="md:col-span-8">
+                                    <input type="text" value={noteData.title} onChange={(e) => handleChange('title', e.target.value)} placeholder="Lecture Topic / Title" className={`w-full bg-transparent text-3xl sm:text-4xl font-black focus:outline-none transition-all text-inherit ${isDarkMode ? 'placeholder-slate-700 focus:placeholder-slate-600' : 'placeholder-slate-300 focus:placeholder-slate-200'}`}/>
+                                </div>
+                                <div className="md:col-span-4 flex flex-col justify-center items-start md:items-end gap-2">
+                                    <div className={`px-4 py-2 rounded-full border text-sm font-bold ${isDarkMode ? 'border-slate-700 bg-slate-900/50 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                                        <input type="date" value={noteData.date} onChange={(e) => handleChange('date', e.target.value)} className="bg-transparent border-none focus:ring-0 p-0 text-inherit text-right uppercase tracking-wide" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}/>
+                                    </div>
+                                </div>
+                            </header>
+
+                            {/* Grid */}
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 min-h-[500px]">
+                                <aside className={`md:col-span-4 lg:col-span-3 p-6 sm:p-8 border-b md:border-b-0 md:border-r flex flex-col ${isDarkMode ? 'border-slate-800 bg-slate-900/30' : 'border-slate-200 bg-slate-50/50'}`}>
+                                    <SectionHeader icon={Share2} title="Cues & Recall" isDarkMode={isDarkMode} />
+                                    <TextArea value={noteData.cues} onChange={(v) => handleChange('cues', v)} placeholder="• Key questions&#10;• Main themes&#10;• Vocab words&#10;• Review cues" className={`${textAreaClass} flex-1`} />
+                                </aside>
+                                <section className="md:col-span-8 lg:col-span-9 p-6 sm:p-8 relative group flex flex-col">
+                                    <SectionHeader icon={Type} title="Detailed Notes" isDarkMode={isDarkMode} action={<div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2"><button className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-200 text-slate-400'}`} title="Voice Input"><Mic size={14} /></button></div>} />
+                                    <TextArea value={noteData.notes} onChange={(v) => handleChange('notes', v)} placeholder="Start typing your main notes here...&#10;&#10;• Use bullet points for lists&#10;• Leave space between topics&#10;• Highlight key concepts" className={`${textAreaClass} flex-1`} />
+                                </section>
+                            </div>
+
+                            {/* Footer */}
+                            <footer className={`p-6 sm:p-8 border-t ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200 bg-white'}`}>
+                                <SectionHeader icon={Sparkles} title="Summary" isDarkMode={isDarkMode} action={<span className={`text-[10px] font-bold ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Summarize in 2-3 sentences</span>} />
+                                <TextArea value={noteData.summary} onChange={(v) => handleChange('summary', v)} placeholder="What was the main takeaway from this session? Summarize the big picture here." className={`${textAreaClass} italic`} minHeight="100px" />
+                            </footer>
+
+                        </div>
+                    </main>
+
+                    {/* Print View (Static/Expanding) - VISIBLE ONLY ON PRINT */}
+                    <div className="hidden print:block bg-white text-black p-8 max-w-none w-full min-h-screen">
+                        {/* Print Header */}
+                        <div className="mb-8 border-b-2 border-slate-800 pb-4">
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-slate-900 mb-2">{noteData.title || "Untitled Note"}</h1>
+                                    <div className="flex items-center gap-2">
+                                        <div className="px-2 py-1 bg-slate-900 text-white rounded text-xs font-bold">Sky Studio</div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date</span>
+                                    <p className="text-lg font-semibold text-slate-900">{noteData.date}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Print Content Grid */}
+                        <div className="border-2 border-slate-800 flex flex-col">
+                            <div className="flex border-b-2 border-slate-800">
+                                {/* Cues Column */}
+                                <div className="w-1/3 p-6 border-r-2 border-slate-800 bg-slate-50">
+                                    <div className="flex items-center gap-2 mb-4 text-slate-500">
+                                        <Share2 size={16} />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Cues</span>
+                                    </div>
+                                    <div className="whitespace-pre-wrap text-sm text-slate-800 leading-relaxed font-medium">
+                                        {noteData.cues}
+                                    </div>
+                                </div>
+
+                                {/* Notes Column */}
+                                <div className="w-2/3 p-6 bg-white">
+                                    <div className="flex items-center gap-2 mb-4 text-slate-500">
+                                        <Type size={16} />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Detailed Notes</span>
+                                    </div>
+                                    <div className="whitespace-pre-wrap text-base text-slate-900 leading-relaxed">
+                                        {noteData.notes}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Summary Section */}
+                            <div className="p-6 bg-slate-50">
+                                <div className="flex items-center gap-2 mb-4 text-slate-500">
+                                    <Sparkles size={16} />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Summary</span>
+                                </div>
+                                <div className="whitespace-pre-wrap text-sm italic text-slate-700 leading-relaxed">
+                                    {noteData.summary}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-8 text-center border-t border-slate-200 pt-4">
+                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Generated with Sky Studio Notes</p>
+                        </div>
+                    </div>
+
+                    {!isFocusMode && (
+                        <div className="print:hidden">
+                            <div className={`fixed top-20 left-10 w-64 h-64 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse transition-colors duration-500 ${isDarkMode ? 'bg-sky-600/10' : 'bg-sky-300/20'}`}/>
+                            <div className={`fixed bottom-20 right-10 w-96 h-96 rounded-full blur-3xl pointer-events-none -z-10 transition-colors duration-500 ${isDarkMode ? 'bg-cyan-600/10' : 'bg-indigo-200/30'}`}/>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // --- Render ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CornellNotesApp />);
+    </script>
+</body>
+</html>
